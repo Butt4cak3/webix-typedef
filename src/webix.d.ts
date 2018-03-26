@@ -1,5 +1,28 @@
 declare namespace webix {
-  function ui<K extends keyof UIMap>(config: ViewConfig, parent?: ui.baseview | string, replacement?: ui.baseview | string | number): UIMap[K]["view"];
+  function ui<K extends keyof UIMap>(config: ConfigWithView<K>, parent?: ui.baseview | string, replacement?: ui.baseview | string | number): UIMap[K]["view"];
+
+  type ConfigWithView<K extends keyof UIMap> = { view: K } & Partial<UIMap[K]["config"]>;
+
+  type ViewConfig = {
+    [K in keyof UIMap]: ConfigWithView<K>;
+  }[keyof UIMap];
+
+  interface UIMap {
+    form: { config: config.form, view: ui.form };
+    layout: { config: config.layout, view: ui.layout };
+    toolbar: { config: config.toolbar, view: ui.toolbar };
+  }
+
+  type DataType = "json" | "xml" | "jsarray" | "csv";
+
+  interface AjaxResponse<T extends {} = any> {
+    json(): T;
+  }
+
+  interface AtomDataLoader<T> {
+    load(url: string, type?: DataType, callback?: (text: string, data: AjaxResponse<T>, http_request: XMLHttpRequest) => void): Promise;
+    parse(data: T | string, type: DataType): void;
+  }
 
   interface BaseBind {
     bind(target: ui.baseview, rule: (slave: ui.baseview, master: ui.baseview) => boolean, format: string): void;
@@ -19,6 +42,21 @@ declare namespace webix {
     unblockEvent(): void;
   }
 
+  interface Promise {
+    reject(reason: any): Promise;
+    resolve(result: any): Promise;
+    then(resCallback: (result: any) => any, rejCallback?: (reason: any) => any): Promise;
+    catch(rejCallback: (result: any) => any): Promise;
+  }
+
+  namespace promise {
+    function all(promises: Promise[]): Promise;
+    function defer(): Promise;
+    function race(promises: Promise[]): Promise;
+    function reject(reason: any): Promise;
+    function resolve(result: any): Promise;
+  }
+
   interface ScrollState {
     x: number;
     y: number;
@@ -36,14 +74,24 @@ declare namespace webix {
     readonly name: string;
   }
 
-  interface UIMap {
-    form: { config: config.form, view: ui.form };
-    layout: { config: config.layout, view: ui.layout };
+  interface ValidateData {
+    clearValidation(): void;
+    validate(mode?: { hidden?: boolean, disabled?: boolean }): boolean;
   }
 
-  type ViewConfig = {
-    [K in keyof UIMap]: { view: K } & Partial<UIMap[K]["config"]>;
-  }[keyof UIMap];
+  interface Values<T> {
+    clear(): void;
+    focus(item: string): void;
+    getCleanValues(): T;
+    getDirtyValues(): T;
+    getValues(): T;
+    getValues(details: { hidden?: boolean, disabled?: boolean }): T;
+    getValues(iterator: (item: ui.baseview) => void): T;
+    isDirty(): boolean;
+    markInvalid(name: keyof T, state: boolean | string): void;
+    setDirty(mark: boolean): void;
+    setValues(obj: T, update?: boolean): void;
+  }
 
   // TODO: What does LayoutState look like?
   interface LayoutState {}
@@ -51,8 +99,27 @@ declare namespace webix {
   namespace events {
     interface EventList {}
 
+    interface AtomDataLoader<T> extends EventList {
+      onAfterLoad: () => void;
+      onBeforeLoad: () => boolean | void;
+      onLoadError: (text: string, xml: T, xhr: XMLHttpRequest) => void;
+    }
+
     interface Scrollable extends EventList {
       onAfterScroll: () => void;
+    }
+
+    interface ValidateData<T> extends EventList {
+      onAfterValidation: (result: boolean, value: T) => void;
+      onBeforeValidate: () => void;
+      onValidationError: (key: keyof T, obj: T) => void;
+      onValidationSuccess: (key: keyof T, obj: T) => void;
+    }
+
+    interface Values extends EventList {
+      onAfterLoad: () => void;
+      onChange: (newv: string, oldv: string) => void;
+      onValues: () => void;
     }
 
     interface baseview extends EventList {
@@ -63,11 +130,35 @@ declare namespace webix {
     interface baselayout extends baseview {}
 
     interface layout extends baselayout, Scrollable {}
+
+    interface toolbar<T> extends layout, AtomDataLoader<T>, Scrollable, ValidateData<T>, Values {}
   }
 
   namespace config {
+    type AtomDataLoader<T> = {
+      data: T[] | string;
+      dataFeed: (text: string) => void | string;
+      datatype: DataType;
+      url: string;
+    };
+
     type EventSystem<E extends events.EventList> = {
       on: Partial<E>;
+    };
+
+    type Scrollable = {
+      scroll: boolean | "x" | "y" | "xy";
+      scrollSpeed: string;
+    };
+
+    type ValidateData<T> = {
+      rules: {
+        [K in keyof T]: (value: T[K]) => boolean;
+      }
+    };
+
+    type Values = {
+      complexData: boolean;
     };
 
     type baseview = {
@@ -103,6 +194,14 @@ declare namespace webix {
       paddingX: number;
       paddingY: number;
       type: "line" | "clean" | "wide" | "space" | "form";
+    };
+
+    type toolbar<T extends {} = any> = layout & AtomDataLoader<T> & Scrollable & ValidateData<T> & Values & EventSystem<events.toolbar<T>> & {
+      // TODO: Figure out how to do this without TS complaining about circular references
+      //elements: ViewConfig[];
+      elementsConfig: {
+        [K in keyof UIMap]: Partial<UIMap[K]["config"]>
+      }[keyof UIMap]
     };
   }
 
@@ -149,8 +248,10 @@ declare namespace webix {
       config: config.layout;
     };
 
-    type toolbar = layout & Scrollable & {
+    type toolbar<T extends {} = any> = layout & Scrollable & ValidateData & Values<T> & EventSystem<events.toolbar<T>> & {
+      config: config.toolbar<T>;
 
+      render(id?: string, data?: T, type?: "add" | "delete" | "move" | "update"): void;
     };
 
     type view = baseview & {};
