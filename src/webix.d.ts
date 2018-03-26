@@ -1,5 +1,5 @@
 declare namespace webix {
-  function ui<T extends ViewConfig>(config: Partial<T>, parent?: ui.baseview | string, replacement?: ui.baseview | string | number): ViewMap[T["view"]];
+  function ui<K extends keyof UIMap>(config: ViewConfig, parent?: ui.baseview | string, replacement?: ui.baseview | string | number): UIMap[K]["view"];
 
   interface BaseBind {
     bind(target: ui.baseview, rule: (slave: ui.baseview, master: ui.baseview) => boolean, format: string): void;
@@ -36,14 +36,14 @@ declare namespace webix {
     readonly name: string;
   }
 
-  interface ViewConfig {
-    view: keyof ViewMap;
+  interface UIMap {
+    form: { config: config.form, view: ui.form };
+    layout: { config: config.layout, view: ui.layout };
   }
 
-  interface ViewMap {
-    "form": ui.form;
-    "layout": ui.layout;
-  }
+  type ViewConfig = {
+    [K in keyof UIMap]: { view: K } & Partial<UIMap[K]["config"]>;
+  }[keyof UIMap];
 
   // TODO: What does LayoutState look like?
   interface LayoutState {}
@@ -70,7 +70,7 @@ declare namespace webix {
       on: Partial<E>;
     };
 
-    type baseview = ViewConfig & {
+    type baseview = {
       animate: boolean;
       borderless: boolean;
       container: HTMLElement | string;
@@ -88,11 +88,13 @@ declare namespace webix {
     };
 
     type baselayout = baseview & EventSystem<events.baselayout> & {
-      cols: Partial<ViewConfig>[];
+      cols: ViewConfig[];
       responsive: string;
-      rows: Partial<ViewConfig>[];
+      rows: ViewConfig[];
       visibleBatch: string;
     };
+
+    type form = baseview & {};
 
     type layout = baselayout & EventSystem<events.layout> & {
       isolate: boolean;
@@ -108,7 +110,7 @@ declare namespace webix {
     type baselayout = baseview & EventSystem<events.baselayout> & {
       config: config.baselayout;
 
-      addView(view: Partial<ViewConfig>, index?: number): string;
+      addView(view: ViewConfig, index?: number): string;
       index(view: baseview): number;
       reconstruct(): void;
       removeView(view: baseview | string): void;

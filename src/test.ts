@@ -1,4 +1,11 @@
 webix.ui({
   view: "layout",
-  propertyThatDoesNotExistOnType: 3
+  on: {
+    onAfterScroll: () => null
+  },
+  rows: [
+    {
+      view: "form"
+    }
+  ]
 });
